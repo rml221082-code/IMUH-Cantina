@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Cozinha - Cantina IMUH</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 0; background: #f7f7f7; }
+  header { background: #c0392b; color: white; text-align: center; padding: 12px 0; }
+  .container { max-width: 1100px; margin: 20px auto; padding: 0 10px; }
+  .filtros { background: #fff; padding: 10px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+  input, select, button { padding: 8px; font-size: 14px; border-radius: 6px; border: 1px solid #ccc; }
+  button { cursor: pointer; transition: 0.2s; }
+  .btn-atualizar { background: #c0392b; color: white; border: none; }
+  .btn-atualizar:hover { background: #e74c3c; }
+  table { width: 100%; border-collapse: collapse; background: white; margin-top: 12px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+  th, td { padding: 10px; text-align: center; border-bottom: 1px solid #eee; }
+  th { background: #c0392b; color: white; }
+  .linha-hoje { background: #fff6f6; }
+  .badge { padding: 2px 8px; border-radius: 4px; color: white; font-size: 13px; }
+  .modo-local { background: #27ae60; }
+  .modo-retirar { background: #2980b9; }
+  .modo-consumo { background: #8e44ad; }
+  .status-pendente { background: #e67e22; color: white; border: none; padding: 6px 10px; border-radius: 5px; }
+  .status-entregue { background: #2ecc71; color: white; border: none; padding: 6px 10px; border-radius: 5px; }
+  .vazio { text-align:center; color:#777; padding:20px; }
+</style>
+</head>
+<body>
+<header><h2>🍽️ Pedidos - Cozinha Cantina IMUH</h2></header>
+
+<div class="container">
+  <div class="filtros">
+    <div>
+      <label><strong>Filtrar por dia:</strong></label>
+      <input type="date" id="dataFiltro">
+      <button onclick="filtrar()">Filtrar</button>
+      <button onclick="resetar()">Mostrar todos</button>
+    </div>
+    <button class="btn-atualizar" onclick="carregarPedidos()">🔄 Atualizar</button>
+  </div>
+
+  <table id="tabelaPedidos">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Data/Hora</th>
+        <th>Nome</th>
+        <th>Produto</th>
+        <th>Qtd</th>
+        <th>Modo</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div id="mensagemVazia" class="vazio" style="display:none;">Nenhum pedido encontrado</div>
+</div>
+
+<script>
+const API_URL = "https://script.google.com/macros/s/AKfycbzjCN9UJv_xZYUWoOh17b_FDrMfKwvpNl22nbc6AqqDPCnsUHbNXtvcMgioncWv56D7Vg/exec"; // <-- cole seu link do Apps Script
+
+let pedidos = [];
+
+async function carregarPedidos() {
+  try {
+    const res = await fetch(API_URL + "?action=pedidos");
+    const json = await res.json();
+    pedidos = (json.rows || []).map((r,i)=>({
+      idx: i+1,
+      id: r.ID || i+1,
+      data: r.DATA ? new Date(r.DATA) : null,
+      nome: r.NOME || "",
+      produto: r.PRODUTO || "",
+      qtd: Number(r.QUANTIDADE || 0),
+      modo: (r.MODO || "").toLowerCase(),
+      status: (r.STATUS || "PENDENTE").toUpperCase()
+    }));
+    renderTabela(pedidos);
+  } catch (err) {
+    console.error(err);
+    alert("Erro ao carregar pedidos");
+  }
+}
+
+function renderTabela(lista){
+  const tbody = document.querySelector("#tabelaPedidos tbody");
+  const vazio = document.querySelector("#mensagemVazia");
+  tbody.innerHTML = "";
+  if(!lista.length){ vazio.style.display="block"; return; }
+  vazio.style.display="none";
+
+  lista.sort((a,b)=> a.data - b.data);
+  lista.forEach((p,i)=>{
+    const tr = document.createElement("tr");
+    const dataStr = p.data ? p.data.toLocaleString() : "";
+    const hoje = new Date().toDateString() === p.data?.toDateString();
+    const classe = hoje ? "linha-hoje" : "";
+    const modo = p.modo.includes("local") ? "modo-local" : 
+                 p.modo.includes("retir") ? "modo-retirar" :
+                 "modo-consumo";
+
+    const btnStatus = document.createElement("button");
+    btnStatus.textContent = p.status === "ENTREGUE" ? "✅ Entregue" : "🕒 Pendente";
+    btnStatus.className = p.status === "ENTREGUE" ? "status-entregue" : "status-pendente";
+    btnStatus.onclick = ()=> alterarStatus(p);
+
+    tr.className = classe;
+    tr.innerHTML = `
+      <td>${i+1}</td>
+      <td>${dataStr}</td>
+      <td>${p.nome}</td>
+      <td>${p.produto}</td>
+      <td>${p.qtd}</td>
+      <td><span class="badge ${modo}">${p.modo}</span></td>
+    `;
+    const tdStatus = document.createElement("td");
+    tdStatus.appendChild(btnStatus);
+    tr.appendChild(tdStatus);
+    tbody.appendChild(tr);
+  });
+}
+
+async function alterarStatus(pedido){
+  const novoStatus = pedido.status === "ENTREGUE" ? "PENDENTE" : "ENTREGUE";
+  if(!confirm(`Deseja marcar o pedido de "${pedido.produto}" como ${novoStatus}?`)) return;
+
+  try {
+    const res = await fetch(API_URL + "?action=atualizarStatus", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: pedido.id, status: novoStatus, action: "atualizarStatus" })
+    });
+
+    const result = await res.json();
+    if(result.success){
+      pedido.status = novoStatus;
+      renderTabela(pedidos);
+    } else {
+      alert(result.msg || "Falha ao atualizar status");
+    }
+  } catch(err){
+    console.error(err);
+    alert("Erro ao comunicar com o servidor: " + err);
+  }
+}
+
+
+function filtrar(){
+  const val = document.getElementById("dataFiltro").value;
+  if(!val){ alert("Escolha uma data"); return; }
+  const alvo = new Date(val);
+  const filtrados = pedidos.filter(p=> p.data && sameDay(p.data, alvo));
+  renderTabela(filtrados);
+}
+
+function sameDay(a,b){
+  return a.getFullYear()===b.getFullYear() &&
+         a.getMonth()===b.getMonth() &&
+         a.getDate()===b.getDate();
+}
+
+function resetar(){
+  document.getElementById("dataFiltro").value="";
+  renderTabela(pedidos);
+}
+
+carregarPedidos();
+setInterval(carregarPedidos, 1500); // atualiza a cada 15s
+</script>
+</body>
+</html>

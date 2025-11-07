@@ -1,0 +1,8 @@
+{
+  "projects": {
+    "default": "consulta-estoque-app",
+    "imuh": "cantina-imuh"
+  },
+  "targets": {},
+  "etags": {}
+}
